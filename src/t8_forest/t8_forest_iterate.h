@@ -102,6 +102,29 @@ t8_forest_search (t8_forest_t forest, t8_forest_search_query_fn search_fn, t8_fo
 void
 t8_forest_iterate_replace (t8_forest_t forest_new, t8_forest_t forest_old, t8_forest_replace_t replace_fn);
 
+/*
+ * \param[in] forest              the forest
+ * \param[in] ltreeid             the local tree id of the current tree
+ * \param[in] element             the element for which the query is executed
+ * \param[in] pfirst              the lowest processor that owns part of \b element. Guaranteed to be non-empty.
+ * \param[in] plast               the highest processor that owns part of \b element. Guaranteed to be non-empty.
+ *                                if this is equal to \b pfirst, then the recursion will stop for
+ *                                \b element's branch after this function returns.
+ * \param[in] queries             if not NULL, a query that is passed through from the search function
+ * \param[in] query_indices       if \a query is not NULL the indices of \a query in the \a queries array from
+ *                                \ref t8_forest_search_partition
+ * \param[in, out] query_matches  if \a query is not NULL: true at the i-th index if and only if the element 'matches'
+ *                                the query of the i-th query index.
+ *                                if \a query is NULL: true if and only if the search should continue with the
+ *                                children of \a element and the queries should be performed for this element.
+ * \param[in] num_active_queries  The number of currently active queries. Does not have to be equal to query->elem_count,
+ *                                since some queries might have been deactivated from previous calls
+ */
+typedef int (*t8_forest_search_partition_query_fn) (t8_forest_t forest, const t8_locidx_t ltreeid,
+                                                    const t8_element_t *element, const int pfirst, const int plast,
+                                                    void *queries, sc_array_t *query_indices, int *query_matches,
+                                                    const size_t num_active_queries);
+
 T8_EXTERN_C_END ();
 
 #endif /* !T8_FOREST_ITERATE_H */
