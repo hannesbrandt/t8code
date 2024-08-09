@@ -129,6 +129,7 @@ typedef int (*t8_forest_search_partition_query_fn) (t8_forest_t forest, const t8
  * each intermediate element. The search will enter each tree at least once.
  * The recursion will only go down branches that are split between multiple processors.
  * This is not a collective function. It does not communicate.
+ * The function expects the coarse mesh to be replicated.
  * If the callback returns false for an element, its descendants
  * are not further searched.
  * To pass user data to the search_fn function use \ref t8_forest_set_user_data

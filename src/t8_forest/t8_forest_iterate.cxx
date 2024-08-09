@@ -530,6 +530,15 @@ t8_forest_iterate_replace (t8_forest_t forest_new, t8_forest_t forest_old, t8_fo
   t8_global_productionf ("Done t8_forest_iterate_replace\n");
 }
 
+static size_t
+t8_forest_determine_rank (sc_array_t *tree_offsets, size_t index, void *data)
+{
+  T8_ASSERT (data == NULL);
+  t8_gloidx_t tree_offset = *(t8_gloidx_t *) sc_array_index (tree_offsets, index);
+
+  return (tree_offset >= 0) ? tree_offset : -tree_offset -1;
+}
+
 void
 t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
                             sc_array_t *queries)
@@ -546,11 +555,26 @@ t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search
     }
   }
 
+  T8_ASSERT (!t8_cmesh_is_partitioned (t8_forest_get_cmesh(forest)));
+  T8_ASSERT (forest->tree_offsets != NULL);
+
+  /* get sc_array_t view of the tree_offsets to enter into split_array */
+  sc_array_t *tree_offsets_view = sc_array_new_data ((t8_gloidx_t *) t8_shmem_array_get_array (forest->tree_offsets),
+                                                     t8_shmem_array_get_elem_size(forest->tree_offsets),
+                                                     t8_shmem_array_get_elem_count(forest->tree_offsets));
+  int num_procs = forest->mpisize;
+  const t8_gloidx_t num_global_trees = t8_forest_get_num_global_trees (forest);
+  sc_array_t *process_offsets = sc_array_new_size (sizeof (size_t), num_global_trees + 2);
+
+  /* split processors into tree-wise sections, going one beyond */
+  sc_array_split (tree_offsets_view, process_offsets, num_global_trees + 1,
+                  t8_forest_determine_rank, NULL);
+  sc_array_destroy (tree_offsets_view);
+
+  sc_array_destroy (process_offsets);
   if (active_queries != NULL) {
     sc_array_destroy (active_queries);
   }
-
-  return;
 }
 
 T8_EXTERN_C_END ();
