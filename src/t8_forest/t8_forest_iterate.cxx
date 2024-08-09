@@ -611,6 +611,18 @@ t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search
       /* this whole tree is owned by one processor */
       pfirst = plast;
     }
+
+    /* we should have found tight bounds on processors for this tree */
+    T8_ASSERT (pfirst <= plast && plast < num_procs);
+
+    /* we know these are non-negative; check before casting to unsigned */
+    T8_ASSERT (plast >= 0 && pnext >= 0 && num_procs >= 0);
+
+    /* These casts remove compiler warnings due to the assumption of the
+     * compiler under -O3 that there cannot happen a signed overflow.
+     */
+    T8_ASSERT ((unsigned) plast <= (unsigned) pnext && (unsigned) pnext <= (unsigned) num_procs);
+    T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, plast, NULL) <= (size_t) itree);
   }
 
   sc_array_destroy (tree_offsets_view);
