@@ -125,6 +125,18 @@ typedef int (*t8_forest_search_partition_query_fn) (t8_forest_t forest, const t8
                                                     void *queries, sc_array_t *query_indices, int *query_matches,
                                                     const size_t num_active_queries);
 
+/* Perform a top-down search of the global partition, executing a callback on
+ * each intermediate element. The search will enter each tree at least once.
+ * The recursion will only go down branches that are split between multiple processors.
+ * This is not a collective function. It does not communicate.
+ * If the callback returns false for an element, its descendants
+ * are not further searched.
+ * To pass user data to the search_fn function use \ref t8_forest_set_user_data
+ */
+void
+t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
+                            sc_array_t *queries);
+
 T8_EXTERN_C_END ();
 
 #endif /* !T8_FOREST_ITERATE_H */
