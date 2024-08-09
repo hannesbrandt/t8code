@@ -536,7 +536,7 @@ t8_forest_determine_rank (sc_array_t *tree_offsets, size_t index, void *data)
   T8_ASSERT (data == NULL);
   t8_gloidx_t tree_offset = *(t8_gloidx_t *) sc_array_index (tree_offsets, index);
 
-  return (tree_offset >= 0) ? tree_offset : -tree_offset - 1;
+  return (size_t) ((tree_offset >= 0) ? tree_offset : -tree_offset - 1);
 }
 
 void
@@ -568,13 +568,47 @@ t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search
 
   /* split processors into tree-wise sections, going one beyond */
   sc_array_split (tree_offsets_view, process_offsets, num_global_trees + 1, t8_forest_determine_rank, NULL);
-  sc_array_destroy (tree_offsets_view);
   T8_ASSERT (process_offsets->elem_count == (size_t) (num_global_trees + 2));
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees + 1) == (size_t) num_procs + 1);
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees) == (size_t) num_procs);
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, 0) == 0);
 
+  int pfirst, plast, pnext;
+  t8_gloidx_t itree;
+  for (pfirst = 0, itree = 0; itree < num_global_trees; pfirst = pnext, itree++) {
+    pnext = *(int *) sc_array_index (process_offsets, itree + 1);
+    T8_ASSERT (pfirst <= pnext && pnext <= num_procs);
 
+    /* fix the last processor in the tree, which is known at this point */
+    T8_ASSERT (pnext > 0);
+    plast = pnext - 1;
+
+    /* now check multiple cases for the beginning processor */
+    if (pfirst < pnext) {
+      /* at least one processor starts in this tree */
+
+      if (t8_shmem_array_get_gloidx (forest->tree_offsets, pfirst) >= 0) {
+        /* pfirst starts at the tree's first descendant but may be empty */
+        while (t8_shmem_array_get_gloidx (forest->element_offsets, pfirst)
+               == t8_shmem_array_get_gloidx (forest->element_offsets, pfirst + 1)) {
+          /* pfirst is empty */
+          ++pfirst;
+          T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, pfirst, NULL) == (size_t) itree);
+        }
+      }
+      else {
+        /* there must be exactly one processor before us in this tree */
+        --pfirst;
+        T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, pfirst, NULL) < (size_t) itree);
+      }
+    }
+    else {
+      /* this whole tree is owned by one processor */
+      pfirst = plast;
+    }
+  }
+
+  sc_array_destroy (tree_offsets_view);
   sc_array_destroy (process_offsets);
   if (active_queries != NULL) {
     sc_array_destroy (active_queries);
