@@ -534,6 +534,22 @@ void
 t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
                             sc_array_t *queries)
 {
+  /* If we have queries build a list of all active queries,
+   * thus all queries in the array */
+  sc_array_t *active_queries = NULL;
+  if (queries != NULL) {
+    const size_t num_queries = queries->elem_count;
+    /* build an array and write 0, 1, 2, 3,... into it */
+    active_queries = sc_array_new_count (sizeof (size_t), num_queries);
+    for (size_t iquery = 0; iquery < num_queries; ++iquery) {
+      *(size_t *) sc_array_index (active_queries, iquery) = iquery;
+    }
+  }
+
+  if (active_queries != NULL) {
+    sc_array_destroy (active_queries);
+  }
+
   return;
 }
 
