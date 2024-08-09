@@ -539,6 +539,13 @@ t8_forest_determine_rank (sc_array_t *tree_offsets, size_t index, void *data)
   return (size_t) ((tree_offset >= 0) ? tree_offset : -tree_offset - 1);
 }
 
+static sc_array_t *
+t8_forest_get_sc_array_view (t8_shmem_array_t shmem_array)
+{
+  return sc_array_new_data ((t8_gloidx_t *) t8_shmem_array_get_array (shmem_array),
+                            t8_shmem_array_get_elem_size (shmem_array), t8_shmem_array_get_elem_count (shmem_array));
+}
+
 void
 t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
                             sc_array_t *queries)
@@ -559,9 +566,7 @@ t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search
   T8_ASSERT (forest->tree_offsets != NULL);
 
   /* get sc_array_t view of the tree_offsets to enter into split_array */
-  sc_array_t *tree_offsets_view = sc_array_new_data ((t8_gloidx_t *) t8_shmem_array_get_array (forest->tree_offsets),
-                                                     t8_shmem_array_get_elem_size (forest->tree_offsets),
-                                                     t8_shmem_array_get_elem_count (forest->tree_offsets));
+  sc_array_t *tree_offsets_view = t8_forest_get_sc_array_view (forest->tree_offsets);
   int num_procs = forest->mpisize;
   const t8_gloidx_t num_global_trees = t8_forest_get_num_global_trees (forest);
   sc_array_t *process_offsets = sc_array_new_size (sizeof (size_t), num_global_trees + 2);
