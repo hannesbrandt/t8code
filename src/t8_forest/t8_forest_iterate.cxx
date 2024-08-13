@@ -553,6 +553,61 @@ t8_forest_search_partition_recursion (t8_forest_t forest, const t8_locidx_t gtre
                                       t8_forest_search_partition_query_fn query_fn, sc_array_t *queries,
                                       sc_array_t *active_queries)
 {
+  /* Assertions to check for necessary requirements */
+  /* The forest must be committed */
+  T8_ASSERT (t8_forest_is_committed (forest));
+  /* The tree must be in the global tree range */
+  T8_ASSERT (0 <= gtreeid && gtreeid < t8_forest_get_num_global_trees (forest));
+  /* If we have queries, we also must have a query function */
+  T8_ASSERT ((queries == NULL) == (query_fn == NULL));
+
+  const size_t num_active = queries == NULL ? 0 : active_queries->elem_count;
+  if (queries != NULL && num_active == 0) {
+    /* There are no queries left. We stop the recursion */
+    return;
+  }
+
+  /* Call the callback function for the element */
+  const int ret = search_fn (forest, gtreeid, element, pfirst, plast, NULL, NULL, NULL, 0);
+
+  if (!ret) {
+    /* The function returned false. We abort the recursion */
+    return;
+  }
+
+  /* Check the queries.
+   * If the current element is not a leaf, we store the queries that
+   * return true in order to pass them on to the children of the element. */
+  sc_array_t *new_active_queries = NULL;
+  int is_leaf = (pfirst == plast); /* recursion stops at single-process elements */
+  if (num_active > 0) {
+    if (!is_leaf) {
+      /* Initialize the new active query array */
+      new_active_queries = sc_array_new (sizeof (size_t));
+    }
+    int *active_queries_matches = T8_ALLOC (int, num_active);
+    T8_ASSERT (query_fn != NULL);
+    query_fn (forest, gtreeid, element, pfirst, plast, queries, active_queries, active_queries_matches, num_active);
+
+    for (size_t iactive = 0; iactive < num_active; iactive++) {
+      if (!is_leaf && active_queries_matches[iactive]) {
+        size_t query_index = *(size_t *) sc_array_index (active_queries, iactive);
+        *(size_t *) sc_array_push (new_active_queries) = query_index;
+      }
+    }
+    T8_FREE (active_queries_matches);
+  }
+
+  if (is_leaf) {
+    /* We are at a 'leaf' of the partition search tree */
+    return;
+  }
+
+  if (num_active > 0 && new_active_queries->elem_count == 0) {
+    /* No queries returned true for this element. We abort the recursion */
+    sc_array_destroy (new_active_queries);
+    return;
+  }
 }
 
 static void
