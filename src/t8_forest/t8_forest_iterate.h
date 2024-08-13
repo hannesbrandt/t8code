@@ -135,8 +135,8 @@ typedef int (*t8_forest_search_partition_query_fn) (t8_forest_t forest, const t8
  * To pass user data to the search_fn function use \ref t8_forest_set_user_data
  */
 void
-t8_forest_search_partition (t8_forest_t forest, t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
-                            sc_array_t *queries);
+t8_forest_search_partition (t8_forest_t forest, t8_forest_search_partition_query_fn search_fn,
+                            t8_forest_search_partition_query_fn query_fn, sc_array_t *queries);
 
 T8_EXTERN_C_END ();
 
