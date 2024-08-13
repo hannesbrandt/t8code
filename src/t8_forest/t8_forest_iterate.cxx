@@ -549,7 +549,7 @@ t8_forest_get_sc_array_view (t8_shmem_array_t shmem_array)
 static void
 t8_forest_search_partition_recursion (t8_forest_t forest, const t8_locidx_t gtreeid, t8_element_t *element,
                                       const t8_eclass_scheme_c *ts, int pfirst, int plast,
-                                      t8_forest_search_partition_query_fn search_fn,
+                                      sc_array_t *global_first_desc, t8_forest_search_partition_query_fn search_fn,
                                       t8_forest_search_partition_query_fn query_fn, sc_array_t *queries,
                                       sc_array_t *active_queries)
 {
@@ -612,7 +612,7 @@ t8_forest_search_partition_recursion (t8_forest_t forest, const t8_locidx_t gtre
 
 static void
 t8_forest_search_tree_partition (t8_forest_t forest, t8_gloidx_t gtreeid, int pfirst, int plast,
-                                 t8_forest_search_partition_query_fn search_fn,
+                                 sc_array_t *global_first_desc, t8_forest_search_partition_query_fn search_fn,
                                  t8_forest_search_partition_query_fn query_fn, sc_array_t *queries,
                                  sc_array_t *active_queries)
 {
@@ -627,8 +627,8 @@ t8_forest_search_tree_partition (t8_forest_t forest, t8_gloidx_t gtreeid, int pf
   ts->t8_element_root (root);
 
   /* Start the top-down search */
-  t8_forest_search_partition_recursion (forest, gtreeid, root, ts, pfirst, plast, search_fn, query_fn, queries,
-                                        active_queries);
+  t8_forest_search_partition_recursion (forest, gtreeid, root, ts, pfirst, plast, global_first_desc, search_fn,
+                                        query_fn, queries, active_queries);
 
   ts->t8_element_destroy (1, &root);
 }
@@ -665,6 +665,7 @@ t8_forest_search_partition (t8_forest_t forest, t8_forest_search_partition_query
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees) == (size_t) num_procs);
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, 0) == 0);
 
+  sc_array_t *global_first_desc_view = t8_forest_get_sc_array_view (forest->global_first_desc);
   int pfirst, plast, pnext;
   t8_gloidx_t itree;
   for (pfirst = 0, itree = 0; itree < num_global_trees; pfirst = pnext, itree++) {
@@ -712,10 +713,12 @@ t8_forest_search_partition (t8_forest_t forest, t8_forest_search_partition_query
     T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, plast, NULL) <= (size_t) itree);
 
     /* go into recursion for this tree */
-    t8_forest_search_tree_partition (forest, itree, pfirst, plast, search_fn, query_fn, queries, active_queries);
+    t8_forest_search_tree_partition (forest, itree, pfirst, plast, global_first_desc_view, search_fn, query_fn, queries,
+                                     active_queries);
   }
 
   sc_array_destroy (tree_offsets_view);
+  sc_array_destroy (global_first_desc_view);
   sc_array_destroy (process_offsets);
   if (active_queries != NULL) {
     sc_array_destroy (active_queries);
