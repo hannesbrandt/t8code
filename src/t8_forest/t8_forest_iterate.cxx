@@ -547,10 +547,33 @@ t8_forest_get_sc_array_view (t8_shmem_array_t shmem_array)
 }
 
 static void
-t8_forest_search_tree_partition (t8_forest_t forest, t8_gloidx_t ltreeid, int pfirst, int plast,
+t8_forest_search_partition_recursion (t8_forest_t forest, const t8_locidx_t gtreeid, t8_element_t *element,
+                                      const t8_eclass_scheme_c *ts, int pfirst, int plast,
+                                      t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
+                                      sc_array_t *queries, sc_array_t *active_queries)
+{
+}
+
+static void
+t8_forest_search_tree_partition (t8_forest_t forest, t8_gloidx_t gtreeid, int pfirst, int plast,
                                  t8_forest_search_query_fn search_fn, t8_forest_search_query_fn query_fn,
                                  sc_array_t *queries, sc_array_t *active_queries)
 {
+  /* Get the element class and scheme of this tree */
+  t8_cmesh_t cmesh = t8_forest_get_cmesh (forest);
+  t8_eclass_t eclass = t8_cmesh_get_tree_class (cmesh, gtreeid);
+  const t8_eclass_scheme_c *ts = t8_forest_get_eclass_scheme (forest, eclass);
+
+  /* Create the root element of the tree */
+  t8_element_t *root;
+  ts->t8_element_new (1, &root);
+  ts->t8_element_root (root);
+
+  /* Start the top-down search */
+  t8_forest_search_partition_recursion (forest, gtreeid, root, ts, pfirst, plast, search_fn, query_fn, queries,
+                                        active_queries);
+
+  ts->t8_element_destroy (1, &root);
 }
 
 void
