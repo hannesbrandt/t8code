@@ -547,7 +547,7 @@ t8_forest_get_sc_array_view (t8_shmem_array_t shmem_array)
 }
 
 static void
-t8_forest_search_partition_recursion (t8_forest_t forest, const t8_locidx_t gtreeid, t8_element_t *element,
+t8_forest_search_partition_recursion (t8_forest_t forest, const t8_gloidx_t gtreeid, t8_element_t *element,
                                       const t8_eclass_scheme_c *ts, int pfirst, int plast,
                                       sc_array_t *global_first_desc, t8_forest_search_partition_query_fn search_fn,
                                       t8_forest_search_partition_query_fn query_fn, sc_array_t *queries,

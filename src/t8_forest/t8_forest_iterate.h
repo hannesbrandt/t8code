@@ -104,7 +104,7 @@ t8_forest_iterate_replace (t8_forest_t forest_new, t8_forest_t forest_old, t8_fo
 
 /*
  * \param[in] forest              the forest
- * \param[in] ltreeid             the local tree id of the current tree
+ * \param[in] gtreeid             the global tree id of the current tree
  * \param[in] element             the element for which the query is executed
  * \param[in] pfirst              the lowest processor that owns part of \b element. Guaranteed to be non-empty.
  * \param[in] plast               the highest processor that owns part of \b element. Guaranteed to be non-empty.
@@ -120,7 +120,7 @@ t8_forest_iterate_replace (t8_forest_t forest_new, t8_forest_t forest_old, t8_fo
  * \param[in] num_active_queries  The number of currently active queries. Does not have to be equal to query->elem_count,
  *                                since some queries might have been deactivated from previous calls
  */
-typedef int (*t8_forest_search_partition_query_fn) (t8_forest_t forest, const t8_locidx_t ltreeid,
+typedef int (*t8_forest_search_partition_query_fn) (t8_forest_t forest, const t8_gloidx_t gtreeid,
                                                     const t8_element_t *element, const int pfirst, const int plast,
                                                     void *queries, sc_array_t *query_indices, int *query_matches,
                                                     const size_t num_active_queries);
