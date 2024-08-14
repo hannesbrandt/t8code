@@ -539,6 +539,25 @@ t8_forest_determine_rank (sc_array_t *tree_offsets, size_t index, void *data)
   return (size_t) ((tree_offset >= 0) ? tree_offset : -tree_offset - 1);
 }
 
+static size_t
+t8_forest_determine_childid (sc_array_t *element_offsets, size_t index, void *data)
+{
+  T8_ASSERT (data != NULL);
+  T8_ASSERT (element_offsets->elem_size = sizeof (t8_linearidx_t));
+
+  t8_linearidx_t linearid = *(t8_linearidx_t *) sc_array_index (element_offsets, index);
+  t8_forest_child_type_query_t *query_data = (t8_forest_child_type_query_t *) data;
+
+  t8_element_t *element;
+  query_data->ts->t8_element_new (1, &element);
+  query_data->ts->t8_element_set_linear_id (element, query_data->ts->t8_element_maxlevel (), linearid);
+
+  int childid = query_data->ts->t8_element_ancestor_id (element, query_data->level + 1);
+
+  query_data->ts->t8_element_destroy (1, &element);
+  return childid;
+}
+
 static sc_array_t *
 t8_forest_get_sc_array_view (t8_shmem_array_t shmem_array)
 {
@@ -587,6 +606,7 @@ t8_forest_search_partition_recursion (t8_forest_t forest, const t8_gloidx_t gtre
     }
     int *active_queries_matches = T8_ALLOC (int, num_active);
     T8_ASSERT (query_fn != NULL);
+    T8_ASSERT (active_queries != NULL);
     query_fn (forest, gtreeid, element, pfirst, plast, queries, active_queries, active_queries_matches, num_active);
 
     for (size_t iactive = 0; iactive < num_active; iactive++) {
@@ -607,6 +627,37 @@ t8_forest_search_partition_recursion (t8_forest_t forest, const t8_gloidx_t gtre
     /* No queries returned true for this element. We abort the recursion */
     sc_array_destroy (new_active_queries);
     return;
+  }
+
+  /* Enter the recursion (the element is definitely not a leaf at this point) */
+  /* We compute all children of E, compute their pfirst and plast and call search_recursion */
+  /* allocate the memory to store the children */
+  int num_children = ts->t8_element_num_children (element);
+  t8_forest_child_type_query_t query_data;
+  query_data.num_children = num_children;
+  query_data.ts = ts;
+  query_data.level = ts->t8_element_level (element);
+  t8_element_t **children = T8_ALLOC (t8_element_t *, num_children);
+  ts->t8_element_new (num_children, children);
+  /* Compute the children */
+  ts->t8_element_children (element, num_children, children);
+  /* get view of the relevant sub-array of global_first_desc */
+  sc_array_t gfd_view, split_offsets;
+  sc_array_init_view (&gfd_view, global_first_desc, pfirst + 1, plast - pfirst);
+  sc_array_init_size (&split_offsets, sizeof (size_t), query_data.num_children + 1);
+
+  /* split global first descendants by child id with respect to element */
+  sc_array_split (&gfd_view, &split_offsets, num_children, t8_forest_determine_childid, (void *) &query_data);
+  T8_ASSERT (*(size_t *) sc_array_index (&split_offsets, (size_t) num_children) == (size_t) (plast - pfirst));
+  T8_ASSERT (*(size_t *) sc_array_index (&split_offsets, 0) == 0);
+
+  /* clean-up */
+  ts->t8_element_destroy (num_children, children);
+  T8_FREE (children);
+  sc_array_reset (&split_offsets);
+  sc_array_reset (&gfd_view);
+  if (num_active > 0) {
+    sc_array_destroy (new_active_queries);
   }
 }
 
