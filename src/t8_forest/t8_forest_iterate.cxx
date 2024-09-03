@@ -540,12 +540,12 @@ t8_forest_determine_rank (sc_array_t *tree_offsets, size_t index, void *data)
 }
 
 static size_t
-t8_forest_determine_childid (sc_array_t *element_offsets, size_t index, void *data)
+t8_forest_determine_childid (sc_array_t *global_first_desc, size_t index, void *data)
 {
   T8_ASSERT (data != NULL);
-  T8_ASSERT (element_offsets->elem_size = sizeof (t8_linearidx_t));
+  T8_ASSERT (global_first_desc->elem_size = sizeof (t8_linearidx_t));
 
-  t8_linearidx_t linearid = *(t8_linearidx_t *) sc_array_index (element_offsets, index);
+  t8_linearidx_t linearid = *(t8_linearidx_t *) sc_array_index (global_first_desc, index);
   t8_forest_child_type_query_t *query_data = (t8_forest_child_type_query_t *) data;
 
   t8_element_t *element;
