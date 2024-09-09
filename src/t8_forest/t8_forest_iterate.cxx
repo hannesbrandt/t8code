@@ -654,6 +654,67 @@ t8_forest_search_partition_recursion (t8_forest_t forest, const t8_gloidx_t gtre
   T8_ASSERT (*(size_t *) sc_array_index (&split_offsets, (size_t) num_children) == (size_t) (plast - pfirst));
   T8_ASSERT (*(size_t *) sc_array_index (&split_offsets, 0) == 0);
 
+
+  /* Split the leaves array in portions belonging to the children of element */
+  int cpfirst, cpnext, cplast, ichild;
+  for (cpfirst = pfirst + 1, ichild = 0; ichild < num_children; cpfirst = cpnext, ichild++) {
+    /* determine the exclusive upper bound of processors starting in child */
+    cpnext = *(int *) sc_array_index (&split_offsets, ichild + 1) + pfirst + 1;
+    T8_ASSERT (cpfirst <= cpnext && cpnext <= plast + 1);
+
+    /* fix the last processor in child, which is known at this point */
+    T8_ASSERT (cpnext > 0);
+    cplast = cpnext - 1;
+
+    /* now check multiple cases for the beginning processor */
+    if (cpfirst < cpnext) {
+      /* at least one processor starts in this child */
+      t8_linearidx_t global_first_descendant
+        = *(t8_linearidx_t *) t8_shmem_array_index (forest->global_first_desc, cpfirst);
+      t8_linearidx_t element_id = ts->t8_element_get_linear_id (children[ichild], ts->t8_element_maxlevel ());
+
+      if (global_first_descendant == element_id) {
+        /* cpfirst starts at the tree's first descendant but may be empty */
+        T8_ASSERT (ichild > 0);
+        while (t8_shmem_array_get_gloidx (forest->element_offsets, cpfirst)
+               == t8_shmem_array_get_gloidx (forest->element_offsets, cpfirst + 1)) {
+          ++cpfirst;
+          T8_ASSERT (t8_forest_determine_childid (&gfd_view, cpfirst - pfirst, &query_data) == (size_t) ichild);
+        }
+      }
+      else {
+        /* there must be exactly one processor before us in this child */
+        --cpfirst;
+        T8_ASSERT (cpfirst == pfirst
+                   || t8_forest_determine_childid (&gfd_view, cpfirst - pfirst, &query_data) == (size_t) ichild);
+      }
+    }
+    else {
+      /* this whole child is owned by one processor */
+      cpfirst = cplast;
+    }
+
+    /* we should have found tight bounds on processors for this child */
+    T8_ASSERT (ichild > 0 || pfirst == cpfirst);
+    T8_ASSERT (ichild < num_children - 1 || plast == cplast);
+    T8_ASSERT (pfirst <= cpfirst && cpfirst <= cplast && cplast <= plast);
+
+    /* we know these are non-negative; check before casting to unsigned */
+    T8_ASSERT (cplast >= 0 && cpnext >= 0 && plast + 1 >= 0);
+
+    /* These casts remove compiler warnings due to the assumption of the
+     * compiler under -O3 that there cannot happen a signed overflow.
+     */
+    T8_ASSERT ((unsigned) cplast <= (unsigned) cpnext && (unsigned) cpnext <= (unsigned) plast + 1);
+    //    T8_ASSERT (cplast == pfirst ||
+    //                  t8_forest_determine_childid (&gfd_view, cplast - pfirst, &query_data)
+    //                  <= (size_t) ichild);
+
+    /* go deeper into the recursion */
+    t8_forest_search_partition_recursion (forest, gtreeid, children[ichild], ts, cpfirst, cplast, global_first_desc,
+                                          search_fn, query_fn, queries, new_active_queries);
+  }
+
   /* clean-up */
   ts->t8_element_destroy (num_children, children);
   T8_FREE (children);
