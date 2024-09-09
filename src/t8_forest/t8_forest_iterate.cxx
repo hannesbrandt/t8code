@@ -33,6 +33,7 @@ typedef struct
   const t8_eclass_scheme_c *ts;
   int level;
   int num_children;
+  int maxlevel;
 } t8_forest_child_type_query_t;
 
 /* This is the function that we call in sc_split_array to determine for an
@@ -61,6 +62,7 @@ t8_forest_split_array (const t8_element_t *element, t8_element_array_t *leaf_ele
   query_data.num_children = ts->t8_element_num_children (element);
   query_data.level = ts->t8_element_level (element);
   query_data.ts = ts;
+  query_data.maxlevel = ts->t8_element_maxlevel ();
 
   sc_array_t *element_array = t8_element_array_get_array_mutable (leaf_elements);
   /* Split the elements array according to the elements' ancestor id at
@@ -550,9 +552,9 @@ t8_forest_determine_childid (sc_array_t *global_first_desc, size_t index, void *
 
   t8_element_t *element;
   query_data->ts->t8_element_new (1, &element);
-  query_data->ts->t8_element_set_linear_id (element, query_data->ts->t8_element_maxlevel (), linearid);
+  query_data->ts->t8_element_set_linear_id (element, query_data->maxlevel, linearid);
 
-  int childid = query_data->ts->t8_element_ancestor_id (element, query_data->level + 1);
+  size_t childid = query_data->ts->t8_element_ancestor_id (element, query_data->level + 1);
 
   query_data->ts->t8_element_destroy (1, &element);
   return childid;
@@ -637,6 +639,7 @@ t8_forest_search_partition_recursion (t8_forest_t forest, const t8_gloidx_t gtre
   query_data.num_children = num_children;
   query_data.ts = ts;
   query_data.level = ts->t8_element_level (element);
+  query_data.maxlevel = forest->maxlevel;
   t8_element_t **children = T8_ALLOC (t8_element_t *, num_children);
   ts->t8_element_new (num_children, children);
   /* Compute the children */
