@@ -144,6 +144,100 @@ t8_search_base::do_search ()
   }
 }
 
+/* This function is called in sc_split_array to obtain the tree offset for a
+ * given process with rank index. */
+static size_t
+t8_forest_determine_rank (sc_array_t *tree_offsets, size_t index, void *data)
+{
+  T8_ASSERT (data == NULL);
+  t8_gloidx_t tree_offset = *(t8_gloidx_t *) sc_array_index (tree_offsets, index);
+
+  return (size_t) ((tree_offset >= 0) ? tree_offset : -tree_offset - 1);
+}
+
+/* Transforms a shmem array into an sc_array_t, which can be passed to
+ * sc_split_array. */
+static sc_array_t *
+t8_forest_get_sc_array_view (t8_shmem_array_t shmem_array)
+{
+  return sc_array_new_data ((t8_gloidx_t *) t8_shmem_array_get_array (shmem_array),
+                            t8_shmem_array_get_elem_size (shmem_array), t8_shmem_array_get_elem_count (shmem_array));
+}
+
+void
+t8_partition_search_base::do_search ()
+{
+  T8_ASSERT (t8_forest_is_committed (forest));
+  T8_ASSERT (!t8_cmesh_is_partitioned (t8_forest_get_cmesh (forest)));
+  T8_ASSERT (forest->tree_offsets != NULL);
+
+  /* to get process offsets of each tree we need tree offsets of each process */
+  const t8_locidx_t num_global_trees = t8_forest_get_num_global_trees (forest);
+  int num_procs = forest->mpisize;
+  sc_array_t *tree_offsets_view = t8_forest_get_sc_array_view (forest->tree_offsets);
+  sc_array_t *process_offsets = sc_array_new_size (sizeof (size_t), num_global_trees + 2);
+
+  /* split processors into tree-wise sections, going one beyond */
+  sc_array_split (tree_offsets_view, process_offsets, num_global_trees + 1, t8_forest_determine_rank, NULL);
+  T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees + 1) == (size_t) num_procs + 1);
+  T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees) == (size_t) num_procs);
+  T8_ASSERT (*(size_t *) sc_array_index (process_offsets, 0) == 0);
+
+  sc_array_t *global_first_desc_view = t8_forest_get_sc_array_view (forest->global_first_desc);
+  int pfirst, plast, pnext;
+  t8_gloidx_t itree;
+  for (pfirst = 0, itree = 0; itree < num_global_trees; pfirst = pnext, itree++) {
+    pnext = *(int *) sc_array_index (process_offsets, itree + 1);
+    T8_ASSERT (pfirst <= pnext && pnext <= num_procs);
+
+    /* fix the last processor in the tree, which is known at this point */
+    T8_ASSERT (pnext > 0);
+    plast = pnext - 1;
+
+    /* now check multiple cases for the beginning processor */
+    if (pfirst < pnext) {
+      /* at least one processor starts in this tree */
+
+      if (t8_shmem_array_get_gloidx (forest->tree_offsets, pfirst) >= 0) {
+        /* pfirst starts at the tree's first descendant but may be empty */
+        while (t8_shmem_array_get_gloidx (forest->element_offsets, pfirst)
+               == t8_shmem_array_get_gloidx (forest->element_offsets, pfirst + 1)) {
+          /* pfirst is empty */
+          ++pfirst;
+          T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, pfirst, NULL) == (size_t) itree);
+        }
+      }
+      else {
+        /* there must be exactly one processor before us in this tree */
+        --pfirst;
+        T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, pfirst, NULL) < (size_t) itree);
+      }
+    }
+    else {
+      /* this whole tree is owned by one processor */
+      pfirst = plast;
+    }
+
+    /* we should have found tight bounds on processors for this tree */
+    T8_ASSERT (pfirst <= plast && plast < num_procs);
+
+    /* we know these are non-negative; check before casting to unsigned */
+    T8_ASSERT (plast >= 0 && pnext >= 0 && num_procs >= 0);
+
+    /* These casts remove compiler warnings due to the assumption of the
+     * compiler under -O3 that there cannot happen a signed overflow.
+     */
+    T8_ASSERT ((unsigned) plast <= (unsigned) pnext && (unsigned) pnext <= (unsigned) num_procs);
+    T8_ASSERT (t8_forest_determine_rank (tree_offsets_view, plast, NULL) <= (size_t) itree);
+
+    /* Todo: go into recursion for this tree */
+  }
+
+  sc_array_destroy (global_first_desc_view);
+  sc_array_destroy (process_offsets);
+  sc_array_destroy (tree_offsets_view);
+}
+
 /* #################### t8_forest_search c interface #################### */
 T8_EXTERN_C_BEGIN ();
 
