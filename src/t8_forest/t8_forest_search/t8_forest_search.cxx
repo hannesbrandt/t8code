@@ -26,6 +26,7 @@ along with t8code; if not, write to the Free Software Foundation, Inc.,
 #include <t8_forest/t8_forest_types.h>
 #include <t8_forest/t8_forest_general.h>
 #include <t8_schemes/t8_scheme.hxx>
+#include <t8_cmesh/t8_cmesh_offset.h>
 
 void
 t8_search_base::search_recursion (const t8_locidx_t ltreeid, t8_element_t *element, const t8_scheme *ts,
@@ -149,10 +150,15 @@ t8_search_base::do_search ()
 static size_t
 t8_forest_determine_tree (sc_array_t *tree_offsets, size_t index, void *data)
 {
-  T8_ASSERT (data == NULL);
-  t8_gloidx_t tree_offset = *(t8_gloidx_t *) sc_array_index (tree_offsets, index);
+  T8_ASSERT (data != NULL);
+  t8_gloidx_t *offset = (t8_gloidx_t *) data;
+  t8_gloidx_t tree_id = t8_offset_first ((int) index, offset);
 
-  return (size_t) ((tree_offset >= 0) ? tree_offset : -tree_offset - 1);
+  /* to obtain a monotonous array we need to decrement tree_id on empty processes */
+  if (tree_id > 0 && index < tree_offsets->elem_count - 1 && t8_offset_empty ((int) index, offset)) {
+    tree_id--;
+  }
+  return (size_t) tree_id;
 }
 
 /* Transforms a shmem array into an sc_array_t, which can be passed to
@@ -175,17 +181,18 @@ t8_partition_search_base::do_search ()
   const t8_locidx_t num_global_trees = t8_forest_get_num_global_trees (forest);
   int num_procs = forest->mpisize;
   sc_array_t *tree_offsets_view = t8_forest_get_sc_array_view (forest->tree_offsets);
+  t8_gloidx_t *offset = (t8_gloidx_t *) tree_offsets_view->array;
   sc_array_t *process_offsets = sc_array_new_size (sizeof (size_t), num_global_trees + 2);
 
   /* split processors into tree-wise sections, going one beyond */
-  sc_array_split (tree_offsets_view, process_offsets, num_global_trees + 1, t8_forest_determine_tree, NULL);
+  sc_array_split (tree_offsets_view, process_offsets, num_global_trees + 1, t8_forest_determine_tree, offset);
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees + 1) == (size_t) num_procs + 1);
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, (size_t) num_global_trees) == (size_t) num_procs);
   T8_ASSERT (*(size_t *) sc_array_index (process_offsets, 0) == 0);
 
   sc_array_t *global_first_desc_view = t8_forest_get_sc_array_view (forest->global_first_desc);
   int pfirst, plast, pnext;
-  t8_gloidx_t itree;
+  t8_locidx_t itree;
   for (pfirst = 0, itree = 0; itree < num_global_trees; pfirst = pnext, itree++) {
     pnext = *(int *) sc_array_index (process_offsets, itree + 1);
     T8_ASSERT (pfirst <= pnext && pnext <= num_procs);
@@ -194,23 +201,26 @@ t8_partition_search_base::do_search ()
     T8_ASSERT (pnext > 0);
     plast = pnext - 1;
 
+    while (t8_offset_empty (plast, offset)) {
+      --plast;
+      T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, plast, offset) == (size_t) itree);
+    }
+
     /* now check multiple cases for the beginning processor */
     if (pfirst < pnext) {
       /* at least one processor starts in this tree */
 
       if (t8_shmem_array_get_gloidx (forest->tree_offsets, pfirst) >= 0) {
         /* pfirst starts at the tree's first descendant but may be empty */
-        while (t8_shmem_array_get_gloidx (forest->element_offsets, pfirst)
-               == t8_shmem_array_get_gloidx (forest->element_offsets, pfirst + 1)) {
-          /* pfirst is empty */
+        while (t8_offset_empty (pfirst, offset)) {
           ++pfirst;
-          T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, pfirst, NULL) == (size_t) itree);
+          T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, pfirst, offset) == (size_t) itree);
         }
       }
       else {
         /* there must be exactly one processor before us in this tree */
         --pfirst;
-        T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, pfirst, NULL) < (size_t) itree);
+        T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, pfirst, offset) < (size_t) itree);
       }
     }
     else {
@@ -228,7 +238,7 @@ t8_partition_search_base::do_search ()
      * compiler under -O3 that there cannot happen a signed overflow.
      */
     T8_ASSERT ((unsigned) plast <= (unsigned) pnext && (unsigned) pnext <= (unsigned) num_procs);
-    T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, plast, NULL) <= (size_t) itree);
+    T8_ASSERT (t8_forest_determine_tree (tree_offsets_view, plast, offset) <= (size_t) itree);
 
     /* Todo: go into recursion for this tree */
   }
